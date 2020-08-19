@@ -23,7 +23,9 @@
 #define PO_LED_WHITE PB2
 #define PO_LED_GREEN PB3
 
-
+#define PI_DISPL_BTN PB5
+#define PO_DISPL_DTA PB6
+#define PO_DISPL_CLK PB7
 
 
 #define AIN_POTI_AMOUNT    PA0  //ADC0
@@ -33,13 +35,13 @@
 #define CH_INTERVAL 1
 
 #define CFG_DDRA 0
-#define CFG_DDRB ( BIT(PO_LED_BLUE) | BIT(PO_LED_RED) | BIT(PO_LED_WHITE) | BIT(PO_LED_GREEN) )
+#define CFG_DDRB ( BIT(PO_LED_BLUE) | BIT(PO_LED_RED) | BIT(PO_LED_WHITE) | BIT(PO_LED_GREEN) | BIT(PO_DISPL_DTA) | BIT(PO_DISPL_CLK) )
 #define CFG_DDRC 0
 #define CFG_DDRD ( BIT(PO_PUMP1) | BIT(PO_PUMP2) )
 
   //Konfiguration der Pull-Ups für Eingänge
 #define CFG_PORTA 0
-#define CFG_PORTB 0
+#define CFG_PORTB BIT(PI_DISPL_BTN)  //pullup for button
 #define CFG_PORTC 0
 #define CFG_PORTD 0
 
@@ -53,36 +55,60 @@
 
 void Init();
 void ShowStart();
+void SendDisplayData(uint8_t dta[]);
 
 
 volatile uint8_t gAdcVal[2]={0};   // filled automatically in ADC ISR
 
 
+const uint8_t lookUpDigi1[16];
+
+uint8_t gX=0;
 
 int main(void)
 {
+   uint8_t loop=0, lastBtn=0xff, x;
 
-    Init();
+   Init();
 
 
-    ShowStart();
+   ShowStart();
 
-  //  uart_init(UART_BAUD_SELECT(19200, F_CPU));
-  uart_init(UART_BAUD_SELECT(28800, F_CPU));  // the best suitable baud rate @ 15MHz
 
-  uart_puts_P("\r\n\n\n\n\n\n\n\n\n************* Starting Flower Pot Irrigation  **************\r\n");
-  uart_puts_P("Build on " __DATE__ " at " __TIME__"\r\n");
-  uart_write_P("\r\n UBRRL=%u, MCUCSR=0x%02x\r\n", UBRRL, MCUCSR);
 
-  SET_BIT(ADCSRA, ADSC);  // start first conversion
+   //  uart_init(UART_BAUD_SELECT(19200, F_CPU));
+   uart_init(UART_BAUD_SELECT(28800, F_CPU));  // the best suitable baud rate @ 15MHz
 
-  while(1)
-  {
-    _delay_ms(2000);
-    uart_write_P("\r\nADC: CH0=%u, ch1=%u", gAdcVal[0], gAdcVal[1]);
-    TGL_BIT(PORTB, PO_LED_BLUE);
+   uart_puts_P("\r\n\n\n\n\n\n\n\n\n************* Starting Flower Pot Irrigation  **************\r\n");
+   uart_puts_P("Build on " __DATE__ " at " __TIME__"\r\n");
+   uart_write_P("\r\n UBRRL=%u, MCUCSR=0x%02x\r\n", UBRRL, MCUCSR);
 
-  }  // while(1)
+   SET_BIT(ADCSRA, ADSC);  // start first conversion
+
+   while(1)
+   {
+      x = GET_BIT(PINB, PI_DISPL_BTN);
+      if(lastBtn != x)
+      {
+         lastBtn = x;
+         if(lastBtn==0)  // button is pressed
+         {
+            TGL_BIT(PORTB, PO_LED_WHITE);
+            gX++;
+         }
+
+      }
+
+      if(++loop == 20)
+      {
+         loop=0;
+         SendDisplayData(NULL);
+
+         uart_write_P("\r\nADC: CH0=%u, ch1=%u", gAdcVal[0], gAdcVal[1]);
+         TGL_BIT(PORTB, PO_LED_BLUE);
+      }
+      _delay_ms(100);
+   }  // while(1)
 }  // main()
 
 
@@ -148,6 +174,34 @@ void ShowStart()
 
 }
 
+#define CLOCK(){SET_BIT(PORTB, PO_DISPL_CLK);\
+  _delay_us(1);\
+  CLR_BIT(PORTB, PO_DISPL_CLK);\
+  _delay_us(1);}
+
+//-------------------------------------------------------------------------------------------
+//  void SendDisplayData(uint8_t dta[])
+//
+//-------------------------------------------------------------------------------------------
+void SendDisplayData(uint8_t dta[])
+{
+  uint8_t clk;
+  SET_BIT(PORTB, PO_DISPL_DTA);
+
+  CLOCK();  //first of 36 clock ticks
+
+  for (clk=0; clk<35; clk++)
+  {
+    CLOCK();
+
+    if(clk<8 && GET_BIT(lookUpDigi1[gX], clk))
+       SET_BIT(PORTB, PO_DISPL_DTA);
+    else
+       CLR_BIT(PORTB, PO_DISPL_DTA);
+
+  }
+}
+
 
 //--------------------------------------------------------------------------
 //  ADC_vect
@@ -170,3 +224,22 @@ ISR(ADC_vect)
 }  // ISR(ADC_vect)
 
 
+const uint8_t lookUpDigi1[16]=
+{
+/*0*/ 0b00111111,
+/*1*/ 0b00000110,
+/*2*/ 0b01011011,
+/*3*/ 0b01001111,
+/*4*/ 0b01100110,
+/*5*/ 0b01101101,
+/*6*/ 0b01111101,
+/*7*/ 0b00000111,
+/*8*/ 0b01111111,
+/*9*/ 0b01101111,
+/*A*/ 0b01110111,
+/*B*/ 0b01111100,
+/*C*/ 0b00111001,
+/*D*/ 0b01011110,
+/*E*/ 0b01111001,
+/*F*/ 0b11110001,
+};
