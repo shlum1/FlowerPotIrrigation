@@ -55,7 +55,12 @@
 
 void Init();
 void ShowStart();
-void SendDisplayData(uint8_t dta[]);
+void SendDisplayData(uint8_t dta[5]);
+void DisplayBCD(uint8_t bcd[3]);
+void DisplayInt(int16_t i);
+
+
+
 
 
 volatile uint8_t gAdcVal[2]={0};   // filled automatically in ADC ISR
@@ -63,7 +68,7 @@ volatile uint8_t gAdcVal[2]={0};   // filled automatically in ADC ISR
 
 const uint8_t lookUpDigi1[16];
 
-uint8_t gX=0;
+uint16_t gX=1;
 
 int main(void)
 {
@@ -94,15 +99,16 @@ int main(void)
          if(lastBtn==0)  // button is pressed
          {
             TGL_BIT(PORTB, PO_LED_WHITE);
-            gX++;
+            gX *= 2;
          }
 
       }
 
-      if(++loop == 20)
+      DisplayInt(gAdcVal[0]*4);
+
+      if(++loop == 10)
       {
          loop=0;
-         SendDisplayData(NULL);
 
          uart_write_P("\r\nADC: CH0=%u, ch1=%u", gAdcVal[0], gAdcVal[1]);
          TGL_BIT(PORTB, PO_LED_BLUE);
@@ -174,18 +180,68 @@ void ShowStart()
 
 }
 
-#define CLOCK(){SET_BIT(PORTB, PO_DISPL_CLK);\
-  _delay_us(1);\
-  CLR_BIT(PORTB, PO_DISPL_CLK);\
-  _delay_us(1);}
+
+
+
+//-------------------------------------------------------------------------------------------
+//  void DisplayInt(int16_t i)
+//
+//-------------------------------------------------------------------------------------------
+void DisplayInt(int16_t i)
+{
+   uint8_t bcd[3];
+
+   bcd[2] = i % 10;
+   bcd[1] = (i % 100) / 10;
+   bcd[0] = i / 100;
+
+   DisplayBCD(bcd);
+}
+
+
+
+//-------------------------------------------------------------------------------------------
+//  void DisplayBCD(uint8_t bcd[3])
+//
+//-------------------------------------------------------------------------------------------
+void DisplayBCD(uint8_t bcd[3])
+{
+   uint8_t data[5]={0};  // 40 bit (35 will be needed
+
+//Digit 1
+   data[0] = lookUpDigi1[bcd[0]] ;
+// Digit 2
+   data[1] = lookUpDigi1[bcd[1]] << 2;
+   data[2] = (lookUpDigi1[bcd[1]] >> 2) & 0x1C;
+//Digit 3
+   data[2] |= (lookUpDigi1[bcd[2]] << 5) ;
+   data[3] = (lookUpDigi1[bcd[2]] & 0x08) >> 2 ;
+   data[3] |= (lookUpDigi1[bcd[2]] & 0x70);
+
+
+   SendDisplayData(data);
+}
+
+
+
+
+#define CLOCK(){\
+   SET_BIT(PORTB, PO_DISPL_CLK);\
+   _delay_us(1);\
+   CLR_BIT(PORTB, PO_DISPL_CLK);\
+   _delay_us(1);\
+}
+
+
+
 
 //-------------------------------------------------------------------------------------------
 //  void SendDisplayData(uint8_t dta[])
 //
 //-------------------------------------------------------------------------------------------
-void SendDisplayData(uint8_t dta[])
+void SendDisplayData(uint8_t dta[5])
 {
-  uint8_t clk;
+  uint8_t clk, byte, bit;
   SET_BIT(PORTB, PO_DISPL_DTA);
 
   CLOCK();  //first of 36 clock ticks
@@ -194,11 +250,13 @@ void SendDisplayData(uint8_t dta[])
   {
     CLOCK();
 
-    if(clk<8 && GET_BIT(lookUpDigi1[gX], clk))
+    byte = clk / 8;
+    bit= clk % 8;
+
+    if(GET_BIT(dta[byte], bit))
        SET_BIT(PORTB, PO_DISPL_DTA);
     else
        CLR_BIT(PORTB, PO_DISPL_DTA);
-
   }
 }
 
@@ -241,5 +299,5 @@ const uint8_t lookUpDigi1[16]=
 /*C*/ 0b00111001,
 /*D*/ 0b01011110,
 /*E*/ 0b01111001,
-/*F*/ 0b11110001,
+/*F*/ 0b01110001,
 };
