@@ -112,6 +112,7 @@ int main(void)
 
          uart_write_P("\r\nADC: CH0=%u, ch1=%u", gAdcVal[0], gAdcVal[1]);
          TGL_BIT(PORTB, PO_LED_BLUE);
+         TGL_BIT(PORTD, PO_PUMP1);
       }
       _delay_ms(100);
    }  // while(1)
@@ -145,9 +146,11 @@ void Init(void)
 //ADC
   ADCSRA = BIT(ADEN) | BIT(ADIE) | 0x7F;  // enable ADC and ADC.IRQ and pre-scaler to 128 (112 kHz sampling @ 14.3MHz clock)
 
-//TIM0 :: amount
-  TCCR0 = BIT(WGM01) | BIT(CS02) | BIT(CS00); // CTC Mode, 1024 Pre-Scaler:: 14.012kHz
-
+//TIM1 :: 1s tick
+  TCCR1A = 0;
+  TCCR1B = BIT(WGM12) | BIT(CS12) | BIT(CS10); // CTC Mode, 1024 Pre-Scaler==> 13.983kHz
+  OCR1A = 13983-1; //==> 1Hz tick
+  SET_BIT(TIMSK, OCIE1A);
 }
 
 
@@ -259,6 +262,31 @@ void SendDisplayData(uint8_t dta[5])
        CLR_BIT(PORTB, PO_DISPL_DTA);
   }
 }
+
+
+volatile uint16_t gPumpOnSeconds=0;
+volatile uint8_t  gHours=0;
+
+ISR(TIMER1_COMPA_vect)
+{
+   static seconds=0;
+
+   seconds++;
+
+   if(seconds==3600)
+   {
+      gHours++
+      seconds=0;
+   }
+   
+   if(gPumpOnSeconds > 0)
+   {
+      pu
+   }
+
+   TGL_BIT(PORTB, PO_LED_GREEN);
+}
+
 
 
 //--------------------------------------------------------------------------
