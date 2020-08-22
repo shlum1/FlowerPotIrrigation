@@ -27,6 +27,8 @@
 #define PO_DISPL_DTA PB6
 #define PO_DISPL_CLK PB7
 
+#define PO_W_SENS1   PC0
+#define PI_W_SENS2   PC1
 
 #define AIN_POTI_AMOUNT    PA0  //ADC0
 #define AIN_POTI_INTERVALL PA1  //ADC1
@@ -36,7 +38,7 @@
 
 #define CFG_DDRA 0
 #define CFG_DDRB ( BIT(PO_LED_BLUE) | BIT(PO_LED_RED) | BIT(PO_LED_WHITE) | BIT(PO_LED_GREEN) | BIT(PO_DISPL_DTA) | BIT(PO_DISPL_CLK) )
-#define CFG_DDRC 0
+#define CFG_DDRC ( BIT(PO_W_SENS1) | BIT(PI_W_SENS2) )  // init water sensor as output, low level
 #define CFG_DDRD ( BIT(PO_PUMP1) | BIT(PO_PUMP2) )
 
   //Konfiguration der Pull-Ups für Eingänge
@@ -59,16 +61,29 @@ void SendDisplayData(uint8_t dta[5]);
 void DisplayBCD(uint8_t bcd[3]);
 void DisplayInt(int16_t i);
 
+void StartPump();
+void StopPump();
+uint8_t CheckWater();
+void SchowPumping();
+uint16_t GetAmountADC();
+uint16_t GetIntervalADC();
 
 
+
+const uint8_t lookUpDigi1[16];
 
 
 volatile uint8_t gAdcVal[2]={0};   // filled automatically in ADC ISR
 
 
-const uint8_t lookUpDigi1[16];
-
 uint16_t gX=1;
+volatile uint16_t gPumpOnSeconds=0;    // pump seconds ON time (10..10000); set when gIrrigateInrerval is 0 (according to AIN_POTI_AMOUNT); clear in TIM1 ISR
+volatile uint16_t gHours=0;            //used in TIM1 ISR (0..(24x7)-1)
+volatile uint8_t  gIrrigateInrerval=0; //(according to AIN_POTI_INTERVAL);
+
+typedef enum {stInit, stIdle, stPumping} TStatus;
+TStatus gSatus;
+
 
 int main(void)
 {
@@ -105,6 +120,12 @@ int main(void)
       }
 
       DisplayInt(gAdcVal[0]*4);
+
+      if(CheckWater())
+        CLR_BIT(PORTB, PO_LED_RED);
+      else
+        SET_BIT(PORTB, PO_LED_RED);
+
 
       if(++loop == 10)
       {
@@ -264,24 +285,104 @@ void SendDisplayData(uint8_t dta[5])
 }
 
 
-volatile uint16_t gPumpOnSeconds=0;
-volatile uint8_t  gHours=0;
+//-------------------------------------------------------------------------------------------
+//  void StartPump()
+//
+//-------------------------------------------------------------------------------------------
+void StartPump()
+{
+
+}
+
+
+//-------------------------------------------------------------------------------------------
+//  void StopPump()
+//
+//-------------------------------------------------------------------------------------------
+void StopPump()
+{
+
+}
+
+
+//-------------------------------------------------------------------------------------------
+//  uint8_t CheckWater()
+//
+//-------------------------------------------------------------------------------------------
+uint8_t CheckWater()
+{
+   uint8_t sens;
+   // initially sens1 & sens 2 are low level outputs
+
+   CLR_BIT(DDRC, PO_W_SENS1); // switch sens1 to input ..
+   SET_BIT(PORTC, PO_W_SENS1); // ..and enable pull-up
+
+   _delay_ms(1);               // sens1 high, sens2 low
+
+   CLR_BIT(DDRC, PI_W_SENS2); // switch sens2 to input ..
+   SET_BIT(PORTC, PI_W_SENS2); // ..and enable pull-up
+   CLR_BIT(PORTC, PO_W_SENS1); // disable pull-up sens1 ..
+   SET_BIT(DDRC, PO_W_SENS1);  // ..and set to output
+
+   _delay_ms(1);      // sens1 low, sens2 high
+
+   sens = GET_BIT(PINC, PI_W_SENS2); //if high: no water
+   CLR_BIT(PORTC, PI_W_SENS2); // disable pull-up sens2 ..
+   SET_BIT(DDRC, PI_W_SENS2);  // ..and set to output
+
+   return sens ? 0 : 1;
+}  // uint8_t CheckWater()
+
+
+//-------------------------------------------------------------------------------------------
+//  void SchowPumping()
+//
+//-------------------------------------------------------------------------------------------
+void SchowPumping()
+{
+
+}
+
+
+//-------------------------------------------------------------------------------------------
+//  uint16_t GetAmountADC()
+//
+//-------------------------------------------------------------------------------------------
+uint16_t GetAmountADC()
+{
+   return 0;
+}
+
+
+
+
+
+//-------------------------------------------------------------------------------------------
+//  uint16_t GetIntervalADC()
+//
+//-------------------------------------------------------------------------------------------
+uint16_t GetIntervalADC()
+{
+   return 0;
+
+}
+
 
 ISR(TIMER1_COMPA_vect)
 {
-   static seconds=0;
+   static uint16_t seconds=0;
 
    seconds++;
 
    if(seconds==3600)
    {
-      gHours++
+      gHours++;
       seconds=0;
    }
-   
+
    if(gPumpOnSeconds > 0)
    {
-      pu
+
    }
 
    TGL_BIT(PORTB, PO_LED_GREEN);
