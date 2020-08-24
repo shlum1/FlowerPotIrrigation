@@ -36,6 +36,11 @@
 #define CH_AMOUNT   0
 #define CH_INTERVAL 1
 
+#define MIN_AMOUNT       1
+#define MAX_AMOUNT     999
+#define MIN_INTERVAL    10
+#define MAX_INTERVAL    70
+
 #define CFG_DDRA 0
 #define CFG_DDRB ( BIT(PO_LED_BLUE) | BIT(PO_LED_RED) | BIT(PO_LED_WHITE) | BIT(PO_LED_GREEN) | BIT(PO_DISPL_DTA) | BIT(PO_DISPL_CLK) )
 #define CFG_DDRC ( BIT(PO_W_SENS1) | BIT(PI_W_SENS2) )  // init water sensor as output, low level
@@ -71,6 +76,7 @@ uint16_t GetIntervalADC();
 
 
 const uint8_t lookUpDigi1[16];
+
 
 
 volatile uint8_t gAdcVal[2]={0};   // filled automatically in ADC ISR
@@ -119,7 +125,8 @@ int main(void)
 
       }
 
-      DisplayInt(gAdcVal[0]*4);
+    //  DisplayInt(GetIntervalADC());
+    SchowPumping();
 
       if(CheckWater())
         CLR_BIT(PORTB, PO_LED_RED);
@@ -135,7 +142,7 @@ int main(void)
          TGL_BIT(PORTB, PO_LED_BLUE);
          TGL_BIT(PORTD, PO_PUMP1);
       }
-      _delay_ms(100);
+      _delay_ms(200);
    }  // while(1)
 }  // main()
 
@@ -317,14 +324,14 @@ uint8_t CheckWater()
    CLR_BIT(DDRC, PO_W_SENS1); // switch sens1 to input ..
    SET_BIT(PORTC, PO_W_SENS1); // ..and enable pull-up
 
-   _delay_ms(1);               // sens1 high, sens2 low
+   _delay_us(1);               // sens1 high, sens2 low
 
    CLR_BIT(DDRC, PI_W_SENS2); // switch sens2 to input ..
    SET_BIT(PORTC, PI_W_SENS2); // ..and enable pull-up
    CLR_BIT(PORTC, PO_W_SENS1); // disable pull-up sens1 ..
    SET_BIT(DDRC, PO_W_SENS1);  // ..and set to output
 
-   _delay_ms(1);      // sens1 low, sens2 high
+   _delay_us(1);      // sens1 low, sens2 high
 
    sens = GET_BIT(PINC, PI_W_SENS2); //if high: no water
    CLR_BIT(PORTC, PI_W_SENS2); // disable pull-up sens2 ..
@@ -334,13 +341,26 @@ uint8_t CheckWater()
 }  // uint8_t CheckWater()
 
 
+
 //-------------------------------------------------------------------------------------------
 //  void SchowPumping()
 //
 //-------------------------------------------------------------------------------------------
 void SchowPumping()
 {
+   const uint8_t lookUpPumpAnimation[4][3]={{0b00000100,0b00000000,0b00000010},{0b00100000,0b00100000,0b00000000},{0b00000000,0b01000100,0b00000000},{0b00000000,0b10001000,0b00000000}};
+   static uint8_t seg=0;
+   uint8_t data[5];  // 40 bit (35 will be needed
 
+    data[0] = lookUpDigi1[seg];
+    data[1] = lookUpPumpAnimation[seg][0];
+    data[2] = lookUpPumpAnimation[seg][1];
+    data[3] = lookUpPumpAnimation[seg][2];
+
+    SendDisplayData(data);
+
+    if(++seg == 4)
+      seg=0;
 }
 
 
@@ -350,7 +370,8 @@ void SchowPumping()
 //-------------------------------------------------------------------------------------------
 uint16_t GetAmountADC()
 {
-   return 0;
+   float v = (float) gAdcVal[CH_AMOUNT] * (MAX_AMOUNT-MIN_AMOUNT) / 255.0 +MIN_AMOUNT;
+   return (uint16_t) v;
 }
 
 
@@ -363,11 +384,18 @@ uint16_t GetAmountADC()
 //-------------------------------------------------------------------------------------------
 uint16_t GetIntervalADC()
 {
-   return 0;
-
+   float v = (float) gAdcVal[CH_INTERVAL] * (MAX_INTERVAL-MIN_INTERVAL) / 255.0 + MIN_INTERVAL;
+   return (uint16_t) v;
 }
 
 
+
+
+
+//-------------------------------------------------------------------------------------------
+//  ISR(TIMER1_COMPA_vect)
+//
+//-------------------------------------------------------------------------------------------
 ISR(TIMER1_COMPA_vect)
 {
    static uint16_t seconds=0;
@@ -409,6 +437,9 @@ ISR(ADC_vect)
 
   SET_BIT(ADCSRA, ADSC);  // start next conversion
 }  // ISR(ADC_vect)
+
+
+
 
 
 const uint8_t lookUpDigi1[16]=
